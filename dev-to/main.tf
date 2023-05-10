@@ -26,16 +26,96 @@ resource "aws_vpc" "main" {
   enable_dns_hostnames = true
 }
 
-resource "aws_subnet" "private_a" {
-  cidr_block        = "172.17.0.0/27"
+resource "aws_subnet" "alb_a" {
+  cidr_block        = "172.17.0.0/28"
   availability_zone = "ap-southeast-1a"
   vpc_id            = aws_vpc.main.id
 }
 
-resource "aws_subnet" "private_b" {
-  cidr_block        = "172.17.0.32/27"
+resource "aws_subnet" "alb_b" {
+  cidr_block        = "172.17.0.16/28"
   availability_zone = "ap-southeast-1b"
   vpc_id            = aws_vpc.main.id
+}
+
+resource "aws_subnet" "ecs_a" {
+  cidr_block        = "172.17.0.32/28"
+  availability_zone = "ap-southeast-1a"
+  vpc_id            = aws_vpc.main.id
+}
+
+resource "aws_subnet" "ecs_b" {
+  cidr_block        = "172.17.0.48/28"
+  availability_zone = "ap-southeast-1b"
+  vpc_id            = aws_vpc.main.id
+}
+
+resource "aws_subnet" "vpce_a" {
+  cidr_block        = "172.17.0.64/28"
+  availability_zone = "ap-southeast-1a"
+  vpc_id            = aws_vpc.main.id
+}
+
+resource "aws_subnet" "vpce_b" {
+  cidr_block        = "172.17.0.80/28"
+  availability_zone = "ap-southeast-1b"
+  vpc_id            = aws_vpc.main.id
+}
+
+resource "aws_network_acl" "main" {
+  vpc_id = aws_vpc.main.id
+
+  ingress {
+    protocol   = -1
+    rule_no    = 100
+    action     = "allow"
+    cidr_block = "0.0.0.0/0"
+    from_port  = 0
+    to_port    = 0
+  }
+
+  egress {
+    protocol   = -1
+    rule_no    = 100
+    action     = "allow"
+    cidr_block = "0.0.0.0/0"
+    from_port  = 0
+    to_port    = 0
+  }
+
+  tags = {
+    env = "dev"
+  }
+}
+
+resource "aws_network_acl_association" "alb_a" {
+  network_acl_id = aws_network_acl.main.id
+  subnet_id      = aws_subnet.alb_a.id
+}
+
+resource "aws_network_acl_association" "alb_b" {
+  network_acl_id = aws_network_acl.main.id
+  subnet_id      = aws_subnet.alb_b.id
+}
+
+resource "aws_network_acl_association" "ecs_a" {
+  network_acl_id = aws_network_acl.main.id
+  subnet_id      = aws_subnet.ecs_a.id
+}
+
+resource "aws_network_acl_association" "ecs_b" {
+  network_acl_id = aws_network_acl.main.id
+  subnet_id      = aws_subnet.ecs_b.id
+}
+
+resource "aws_network_acl_association" "vpce_a" {
+  network_acl_id = aws_network_acl.main.id
+  subnet_id      = aws_subnet.vpce_a.id
+}
+
+resource "aws_network_acl_association" "vpc_b" {
+  network_acl_id = aws_network_acl.main.id
+  subnet_id      = aws_subnet.vpce_b.id
 }
 
 resource "aws_security_group" "my-personal-web" {
@@ -61,12 +141,58 @@ resource "aws_security_group" "my-personal-web" {
   }
 }
 
-resource "aws_security_group_rule" "ingress" {
+resource "aws_security_group" "ecs" {
+  name        = "ecs"
+  description = "Allow HTTP inbound traffic"
+  vpc_id      = aws_vpc.main.id
+
+  egress {
+    description = "Allow all to VPC"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "all"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_security_group" "vpce" {
+  name        = "vpce"
+  description = "Allow HTTP inbound traffic"
+  vpc_id      = aws_vpc.main.id
+
+  egress {
+    description = "Allow all to VPC"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "all"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_security_group_rule" "ecs_vpce" {
+  type                     = "ingress"
+  from_port                = 0
+  to_port                  = 0
+  protocol                 = "all"
+  source_security_group_id = aws_security_group.ecs.id
+  security_group_id        = aws_security_group.vpce.id
+}
+
+resource "aws_security_group_rule" "alb_ecs" {
   type                     = "ingress"
   from_port                = 0
   to_port                  = 0
   protocol                 = "all"
   source_security_group_id = aws_security_group.my-personal-web.id
+  security_group_id        = aws_security_group.ecs.id
+}
+
+resource "aws_security_group_rule" "ecs_alb" {
+  type                     = "ingress"
+  from_port                = 0
+  to_port                  = 0
+  protocol                 = "all"
+  source_security_group_id = aws_security_group.ecs.id
   security_group_id        = aws_security_group.my-personal-web.id
 }
 
@@ -75,8 +201,8 @@ resource "aws_vpc_endpoint" "ecr-dkr" {
   private_dns_enabled = true
   service_name        = "com.amazonaws.ap-southeast-1.ecr.dkr"
   vpc_endpoint_type   = "Interface"
-  subnet_ids          = [aws_subnet.private_a.id, aws_subnet.private_b.id]
-  security_group_ids  = [aws_security_group.my-personal-web.id]
+  subnet_ids          = [aws_subnet.vpce_a.id, aws_subnet.vpce_b.id]
+  security_group_ids  = [aws_security_group.vpce.id]
 }
 
 resource "aws_vpc_endpoint" "ecr-api" {
@@ -84,8 +210,8 @@ resource "aws_vpc_endpoint" "ecr-api" {
   private_dns_enabled = true
   service_name        = "com.amazonaws.ap-southeast-1.ecr.api"
   vpc_endpoint_type   = "Interface"
-  subnet_ids          = [aws_subnet.private_a.id, aws_subnet.private_b.id]
-  security_group_ids  = [aws_security_group.my-personal-web.id]
+  subnet_ids          = [aws_subnet.vpce_a.id, aws_subnet.vpce_b.id]
+  security_group_ids  = [aws_security_group.vpce.id]
 }
 
 resource "aws_vpc_endpoint" "logs" {
@@ -93,8 +219,8 @@ resource "aws_vpc_endpoint" "logs" {
   private_dns_enabled = true
   service_name        = "com.amazonaws.ap-southeast-1.logs"
   vpc_endpoint_type   = "Interface"
-  subnet_ids          = [aws_subnet.private_a.id, aws_subnet.private_b.id]
-  security_group_ids  = [aws_security_group.my-personal-web.id]
+  subnet_ids          = [aws_subnet.vpce_a.id, aws_subnet.vpce_b.id]
+  security_group_ids  = [aws_security_group.vpce.id]
 }
 
 resource "aws_vpc_endpoint" "ssm" {
@@ -102,8 +228,8 @@ resource "aws_vpc_endpoint" "ssm" {
   private_dns_enabled = true
   service_name        = "com.amazonaws.ap-southeast-1.ssmmessages"
   vpc_endpoint_type   = "Interface"
-  subnet_ids          = [aws_subnet.private_a.id, aws_subnet.private_b.id]
-  security_group_ids  = [aws_security_group.my-personal-web.id]
+  subnet_ids          = [aws_subnet.vpce_a.id, aws_subnet.vpce_b.id]
+  security_group_ids  = [aws_security_group.vpce.id]
 }
 
 resource "aws_vpc_endpoint" "s3" {
@@ -125,14 +251,13 @@ resource "aws_vpc_endpoint_route_table_association" "s3-route" {
   vpc_endpoint_id = aws_vpc_endpoint.s3.id
 }
 
-
 resource "aws_lb" "my-personal-web" {
 
   name               = "my-personal-web-lb-tf"
   internal           = true
   load_balancer_type = "application"
   security_groups    = [aws_security_group.my-personal-web.id]
-  subnets            = [aws_subnet.private_a.id, aws_subnet.private_b.id]
+  subnets            = [aws_subnet.alb_a.id, aws_subnet.alb_b.id]
   tags = {
     env = "dev"
   }
@@ -182,65 +307,6 @@ data "aws_iam_policy_document" "ecs_tasks_execution_role" {
   }
 }
 
-resource "aws_iam_role" "ecs_task_role" {
-  name               = "role-name-task"
-  assume_role_policy = data.aws_iam_policy_document.ecs_tasks_execution_role.json
-}
-
-resource "aws_iam_role" "ecs_tasks_execution_role" {
-  name               = "my-personal-web-ecs-task-execution-role"
-  assume_role_policy = data.aws_iam_policy_document.ecs_tasks_execution_role.json
-}
-
-resource "aws_iam_role_policy_attachment" "ecs_tasks_execution_role" {
-  role       = aws_iam_role.ecs_tasks_execution_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
-
-resource "aws_iam_role_policy_attachment" "task_execution_ecr" {
-  role       = aws_iam_role.ecs_tasks_execution_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
-}
-
-resource "aws_iam_role_policy_attachment" "task_execution_s3" {
-  role       = aws_iam_role.ecs_tasks_execution_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
-}
-
-resource "aws_iam_role_policy_attachment" "task_s3" {
-  role       = aws_iam_role.ecs_task_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
-}
-
-resource "aws_iam_role_policy_attachment" "task_ecr" {
-  role       = aws_iam_role.ecs_task_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
-}
-
-# https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs-exec.html
-data "aws_iam_policy_document" "ecs_task_ssm_policy" {
-  statement {
-    effect = "Allow"
-    actions = [
-      "ssmmessages:CreateControlChannel",
-      "ssmmessages:CreateDataChannel",
-      "ssmmessages:OpenControlChannel",
-      "ssmmessages:OpenDataChannel"
-    ]
-    resources = ["*"]
-  }
-}
-
-resource "aws_iam_policy" "ecs_task_ssm_policy" {
-  name   = "ecs_task_ssm_policy"
-  path   = "/"
-  policy = data.aws_iam_policy_document.ecs_task_ssm_policy.json
-}
-
-resource "aws_iam_role_policy_attachment" "ecs_task_ssm_policy_attachment" {
-  role       = aws_iam_role.ecs_task_role.name
-  policy_arn = aws_iam_policy.ecs_task_ssm_policy.arn
-}
 
 resource "aws_ecs_task_definition" "my-personal-web" {
   family                   = "service"
@@ -277,8 +343,8 @@ resource "aws_ecs_service" "my-personal-web" {
   enable_execute_command = true
 
   network_configuration {
-    subnets          = [aws_subnet.private_a.id, aws_subnet.private_b.id]
-    security_groups  = [aws_security_group.my-personal-web.id]
+    subnets          = [aws_subnet.ecs_a.id, aws_subnet.ecs_b.id]
+    security_groups  = [aws_security_group.ecs.id]
     assign_public_ip = false
   }
 
