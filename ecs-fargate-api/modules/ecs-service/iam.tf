@@ -1,4 +1,4 @@
-data "aws_iam_policy_document" "ecs_tasks_execution_role" {
+data "aws_iam_policy_document" "ecs_assume_role_policy" {
   statement {
     actions = ["sts:AssumeRole"]
 
@@ -9,9 +9,14 @@ data "aws_iam_policy_document" "ecs_tasks_execution_role" {
   }
 }
 
+resource "aws_iam_role" "task_role" {
+  name               = local.task_role_name
+  assume_role_policy = data.aws_iam_policy_document.ecs_assume_role_policy.json
+}
+
 resource "aws_iam_role" "task_execution_role" {
   name               = local.task_execution_role_name
-  assume_role_policy = data.aws_iam_policy_document.ecs_tasks_execution_role.json
+  assume_role_policy = data.aws_iam_policy_document.ecs_assume_role_policy.json
 }
 
 resource "aws_iam_role_policy_attachment" "amazon_task_execution_policy" {

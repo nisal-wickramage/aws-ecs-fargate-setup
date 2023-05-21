@@ -23,52 +23,16 @@ resource "aws_ecs_cluster_capacity_providers" "this" {
   capacity_providers = [local.launch_type]
 }
 
-resource "aws_ecs_task_definition" "this" {
-  family                   = "service"
-  requires_compatibilities = [local.launch_type]
-  network_mode             = "awsvpc"
-  cpu                      = 1024
-  memory                   = 2048
-  execution_role_arn       = aws_iam_role.task_execution_role.arn
-  task_role_arn            = aws_iam_role.task_execution_role.arn
-  container_definitions = jsonencode([{
-    name      = "nginx"
-    image     = "${aws_ecr_repository.repositories["nginx"].repository_url}:latest"
-    cpu       = 1024
-    memory    = 2048
-    essential = true
-    portMappings = [{
-      containerPort = 80
-      hostPort      = 80
-    }]
-    logConfiguration = {
-      logDriver = "awslogs"
-      options = {
-        awslogs-group         = aws_cloudwatch_log_group.task.id
-        awslogs-region        = local.region
-        awslogs-stream-prefix = "ecs"
-      }
-    }
-  }])
+module "ecs_service" {
+    for_each = local.ecs_services
+
+    source = "./modules/ecs-service"
+
+    service_name = each.key
+    log_retention_in_days = 14
+    service_subnet_ids = each.value.subnet_ids
+    ecr_uri = aws_ecr_repository.repositories[each.key].repository_url
+    ecs_cluster_id = aws_ecs_cluster.this.id
+    environment_variables = try(each.value.environment_variables, {})
+    secrets = try(each.value.secrets, {})
 }
-
-resource "aws_ecs_service" "this" {
-  name                   = "nginx"
-  cluster                = aws_ecs_cluster.this.id
-  task_definition        = aws_ecs_task_definition.this.arn
-  desired_count          = 1
-  launch_type            = local.launch_type
-  enable_execute_command = true
-
-  network_configuration {
-    subnets          = local.ecs_subnet_ids
-    assign_public_ip = false
-  }
-
-  tags = {
-    "Name" = "nginx"
-  }
-  propagate_tags = "SERVICE"
-}
-
-

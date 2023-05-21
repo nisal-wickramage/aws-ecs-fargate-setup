@@ -1,6 +1,5 @@
 locals {
   project_code = "nisal"
-  region = "ap-southeast-1"
   vpc_name     = "${local.project_code}-vpc"
 
   vpc_cidr = "172.17.0.0/25"
@@ -61,18 +60,26 @@ locals {
 
   }
 
-  ecs_cluster_name = "${local.project_code}-ecs-cluster"
-  launch_type = "FARGATE"
+  ecs_cluster_name         = "${local.project_code}-ecs-cluster"
+  launch_type              = "FARGATE"
   task_execution_role_name = "${local.project_code}-ecs-task-execution"
-  amazon_task_excution_role_policy = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-  amazon_s3_full_access_policy = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
-  ecs_subnet_ids   = toset([for each in aws_subnet.subnets : each.id if length(regexall("ecs", each.tags_all["Name"])) > 0])
-  task_log_group_name = "${local.project_code}-task-log-group"
-  log_retention_in_days = 7
+  ecs_subnet_ids           = toset([for each in aws_subnet.subnets : each.id if length(regexall("ecs", each.tags_all["Name"])) > 0])
+  task_log_group_name      = "${local.project_code}-task-log-group"
+  log_retention_in_days    = 7
 
   ecs_services = {
     "nginx" = {
       subnet_ids = local.ecs_subnet_ids
+    },
+    "postgres" = {
+      subnet_ids = local.ecs_subnet_ids
+      environment_variables = {
+        environment = [
+          {
+            "name"  = "POSTGRES_PASSWORD"
+            "value" = "default"
+          }
+      ] }
     }
   }
 }
