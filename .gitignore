@@ -33,3 +33,5 @@ override.tf.json
 .terraformrc
 terraform.rc
 dev-to/.terraform.lock.hcl
+.DS_Store
+ecs-fargate-api/.terraform.lock.hcl
