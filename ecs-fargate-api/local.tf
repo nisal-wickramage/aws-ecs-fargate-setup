@@ -57,13 +57,12 @@ locals {
       service_name = "com.amazonaws.ap-southeast-1.ssmmessages"
       subnet_ids   = local.vpce_subnet_ids
     },
-
   }
 
   ecs_cluster_name         = "${local.project_code}-ecs-cluster"
   launch_type              = "FARGATE"
   task_execution_role_name = "${local.project_code}-ecs-task-execution"
-  ecs_subnet_ids           = toset([for each in aws_subnet.subnets : each.id if length(regexall("ecs", each.tags_all["Name"])) > 0])
+  ecs_subnet_ids           = toset([for each in aws_subnet.subnets : each.id if length(regexall("ecs", each.tags_all["Name"])) > 0]) 
   task_log_group_name      = "${local.project_code}-task-log-group"
   log_retention_in_days    = 7
 
@@ -82,4 +81,6 @@ locals {
       ] }
     }
   }
+
+  db_subnet_ids           = toset([for each in aws_subnet.subnets : each.id if length(regexall("db", each.tags_all["Name"])) > 0]) 
 }

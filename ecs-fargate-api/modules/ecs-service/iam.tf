@@ -29,4 +29,28 @@ resource "aws_iam_role_policy_attachment" "amazon_s3_full_access_policy" {
   policy_arn = local.amazon_s3_full_access_policy
 }
 
+data "aws_iam_policy_document" "ssm" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "ssmmessages:CreateControlChannel",
+      "ssmmessages:CreateDataChannel",
+      "ssmmessages:OpenControlChannel",
+      "ssmmessages:OpenDataChannel"
+    ]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_policy" "ssm_policy" {
+  name = "${var.service_name}-ssm-policy"
+  path = "/"
+  policy = data.aws_iam_policy_document.ssm.json
+}
+
+resource "aws_iam_role_policy_attachment" "ssm_policy" {
+  role = aws_iam_role.task_role.name
+  policy_arn = aws_iam_policy.ssm_policy.arn
+}
+
 
